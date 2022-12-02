@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import argparse
-from looker_deployer.commands import deploy_boards, deploy_code, deploy_connections
+from looker_deployer.commands import deploy_boards, deploy_code, deploy_connections, deploy_schedules, deploy_alerts
 from looker_deployer.commands import deploy_content, deploy_content_export
 from looker_deployer.commands import deploy_permission_sets, deploy_model_sets, deploy_roles, deploy_groups, deploy_group_in_group, deploy_role_to_group, deploy_user_attributes
 from looker_deployer import version as pkg
@@ -37,6 +37,8 @@ def main():
     setup_group_in_group_subparser(subparsers)
     setup_role_to_group_subparser(subparsers)
     setup_user_attributes_subparser(subparsers)
+    setup_schedules_subparser(subparsers)
+    setup_alerts_subparser(subparsers)
     args = parser.parse_args()
     if args.version:
         print(pkg.__version__)
@@ -196,3 +198,22 @@ def setup_user_attributes_subparser(subparsers):
     user_attributes_subparser.add_argument("--delete", action="store_true", help="enables the ability for explicit deletes of user attributes in target")
     user_attributes_subparser.add_argument("--debug", action="store_true", help="set logger to debug for more verbosity")
     user_attributes_subparser.set_defaults(func=deploy_user_attributes.main)
+
+def setup_schedules_subparser(subparsers):
+    schedules_subparser = subparsers.add_parser("schedules")
+    schedules_subparser.add_argument("--source", required=True, help="which environment to source the board from")
+    schedules_subparser.add_argument("--target", required=True, nargs="+", help="which target environment(s) to deploy to")
+    schedules_subparser.add_argument("--folders", nargs="+", help="Filter schedules to these folders only")
+    schedules_subparser.add_argument("--ini", default=loc, help="ini file to parse for credentials")
+    schedules_subparser.add_argument("--debug", action="store_true", help="set logger to debug for more verbosity")
+    schedules_subparser.set_defaults(func=deploy_schedules.main)
+
+def setup_alerts_subparser(subparsers):
+    alerts_subparser = subparsers.add_parser("alerts")
+    alerts_subparser.add_argument("--source", required=True, help="which environment to source the board from")
+    alerts_subparser.add_argument("--target", required=True, nargs="+", help="which target environment(s) to deploy to")
+    alerts_subparser.add_argument("--copy_disabled", default=False, help="Should we copy disabled alerts")
+    alerts_subparser.add_argument("--ini", default=loc, help="ini file to parse for credentials")
+    alerts_subparser.add_argument("--debug", action="store_true", help="set logger to debug for more verbosity")
+    alerts_subparser.set_defaults(func=deploy_alerts.main)
+
