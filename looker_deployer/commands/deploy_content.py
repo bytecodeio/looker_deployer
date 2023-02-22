@@ -36,15 +36,16 @@ def alert_cleanup(sdk):
     for alert in disabled_alerts:
         if alert['disabled_reason'] == "Dashboard element has been removed.":
             sdk.delete_alert(alert['id'])
+            logger.info("Alert removed", extra={"alert title": alert['custom_title'], "owner": alert['owner_display_name']})
 
 
 def get_space_ids_from_name(space_name, parent_id, sdk):
     if (space_name == "Shared" and parent_id == "0"):
-        return ["1"]
+        return ["23"]
     elif (space_name == "Embed Groups" and parent_id == "0"):
         return sdk.search_folders(name=space_name, parent_id=None)[0].id
     elif (space_name == "Users" and parent_id == "0"):
-        return sdk.search_folders(name=space_name, parent_id=None)[0].id
+        return [sdk.search_folders(name=space_name, parent_id=None)[0].id]
     elif (space_name == "Embed Users" and parent_id == "0"):
         return sdk.search_folders(name=space_name, parent_id=None)[0].id
     logger.debug("space info", extra={"space_name": space_name, "parent_id": parent_id})
@@ -60,9 +61,10 @@ def create_or_return_space(space_name, parent_id, sdk):
         target_id = get_space_ids_from_name(space_name, parent_id, sdk)
         logger.debug("Space ID from name", extra={"id": target_id})
         assert len(target_id) == 1
+        print(f"length of target_id {len(target_id)}, target_id {target_id}")
     except AssertionError as e:
         if len(target_id) > 1:
-            logger.error("More than one Space found with that parent/name", extra={"space_ids": target_id})
+            logger.error("More than one Space found with that parent/name", extra={"space_ids": target_id, "length": len(target_id), "type": type(target_id)})
             raise e
         elif (parent_id == '2' and len(target_id) == 0):
             logger.warning("Cannot create folder in Users.  Add the User first, then import their content", extra={"folder": space_name, "target_id": len(target_id)})
@@ -136,7 +138,6 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
     is_new_dash = "false"
     existing_dash_alerts = []
     existing_elements_w_alerts = []
-
     if content_type == "dashboard":  ## only run for dashboards, looks can't have alerts
         sdk = get_client(ini, env)  ## should we update the function def and pass sdk?
         with open(content_json) as file:
@@ -149,7 +150,7 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
         if is_new_dash == "false": ## if it's an existing dashboard, save the alerts and elements
             for element in existing_dash[0]['dashboard_elements']:
                 start = len(existing_dash_alerts)
-                alerts = list(filter(lambda alert: alert['dashboard_element_id'] == element['id'], enabled_alerts))
+                alerts = list(filter(lambda alert: str(alert['dashboard_element_id']) == str(element['id']), enabled_alerts))
                 if len(alerts) > 0:
                     existing_dash_alerts.extend(alerts)
                 if len(existing_dash_alerts) > start:
@@ -173,13 +174,27 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
         for alert in existing_dash_alerts:  ## create new alerts
             logger.debug('processing alert for element', extra={"element_id": alert['dashboard_element_id']})
             new_alert = {}
+            update_owner = {} #alerts are assigned to creator, need to update after
+            update_owner['owner_id'] = alert['owner_id']
             for key in alert.keys():
-                new_alert[key] = alert[key]                
+                new_alert[key] = alert[key]
+            new_alert['applied_dashboard_filters'] = []
+            new_filter = {}
+            for old_filter in alert['applied_dashboard_filters']:
+                new_filter = old_filter.__dict__
+                if new_filter['filter_value'] == 'None':
+                    new_filter['filter_value'] = ""
+                new_alert['applied_dashboard_filters'].append(new_filter)
             if alert['dashboard_element_id'] in old_to_new_ids.keys():
                 logger.debug("creating alert", extra={"old_element_id": alert['dashboard_element_id'], "new_element_id": old_to_new_ids[alert['dashboard_element_id']]})
                 new_alert['dashboard_element_id'] = old_to_new_ids[alert['dashboard_element_id']]
                 try:
-                    sdk.create_alert(new_alert)
+                    created_alert = sdk.create_alert(new_alert)
+                    sdk.update_alert_field(created_alert['id'], update_owner) #update new alert to correct owner
+                    update_owner['owner_id'] = sdk.me()['id'] #get id of current user
+                    if alert['id'] != update_owner['owner_id']:
+                        sdk.update_alert_field(alert['id'], update_owner) #update old alert to current user to prevent errors when deleting
+                    sdk.delete_alert(alert['id'])
                 except Exception as e:
                     print(e)
         
@@ -360,7 +375,7 @@ def main(args):
 
     sdk = get_client(args.ini, args.env)
     global enabled_alerts
-    enabled_alerts = sdk.search_alerts(disabled="false")
+    enabled_alerts = sdk.search_alerts(disabled="false", all_owners=True)
     send_content(
         sdk,
         args.env,
