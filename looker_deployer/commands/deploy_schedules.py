@@ -16,9 +16,7 @@ def send_schedules(source_sdk, target_sdk, folders=None):
         if len(target_user) == 0:
             logger.info("Target user missing for schedule", extra={"missing email": source_user['email'], "missing user_id": schedule['user_id']})
             continue
-        print(source_user['email'])
         if schedule['look_id'] is not None:
-            print("It's a Look Schedule!")
             source_look = source_sdk.look(schedule['look_id'])
             target_look = find_target_look(schedule['look_id'], source_sdk, target_sdk)
             if len(target_look) == 0:
@@ -43,16 +41,12 @@ def send_schedules(source_sdk, target_sdk, folders=None):
                     is_duplicate = False
                     break_out_flag = False
                     for schedule in existing_schedules:
-                        print("new crontab = " + str(new_schedule['crontab']) + " old crontab = " + str(schedule['crontab']))
-                        print("new dest length = " + str(len(new_schedule['scheduled_plan_destination'])) + " existing dest length = " + str(len(schedule['scheduled_plan_destination'])))
                         if (new_schedule['crontab'] == schedule['crontab']) and (len(new_schedule['scheduled_plan_destination']) == len(schedule['scheduled_plan_destination'])):
                             #new_dests = []
                             existing_dests = []
                             for destination in schedule['scheduled_plan_destination']:
                                 dest = {'format': destination['format'], 'address': destination['address']}
                                 existing_dests.append(dest)
-                                print('$$$$$$$$$ new destinations ' + str(new_dests))
-                                print('$$$$$$$$$ existing destinations ' + str(existing_dests))
                             for dest in new_dests:
                                 if dest not in existing_dests:
                                     break
@@ -66,19 +60,16 @@ def send_schedules(source_sdk, target_sdk, folders=None):
                     if is_duplicate:
                         continue
                     else:
-                        print("made it to line 66")
                         try:
                             target_sdk.create_scheduled_plan(new_schedule)
                         except Exception as e:
                             print(e)
                 else:
-                    print("made it to line 69")
                     try:
                         target_sdk.create_scheduled_plan(new_schedule)
                     except Exception as e:
                         print(e)
         if schedule['dashboard_id'] is not None:
-            print("It's a Dashboard Schedule!")
             source_dash = source_sdk.dashboard(schedule['dashboard_id'])
             target_dash = find_target_dash(schedule['dashboard_id'], source_sdk, target_sdk)
             if len(target_dash) == 0:
@@ -103,16 +94,12 @@ def send_schedules(source_sdk, target_sdk, folders=None):
                     is_duplicate = False
                     break_out_flag = False
                     for schedule in existing_schedules:
-                        print("new crontab = " + str(new_schedule['crontab']) + " old crontab = " + str(schedule['crontab']))
-                        print("new dest length = " + str(len(new_schedule['scheduled_plan_destination'])) + " existing dest length = " + str(len(schedule['scheduled_plan_destination'])))
                         if (new_schedule['crontab'] == schedule['crontab']) and (len(new_schedule['scheduled_plan_destination']) == len(schedule['scheduled_plan_destination'])):
                             #new_dests = []
                             existing_dests = []
                             for destination in schedule['scheduled_plan_destination']:
                                 dest = {'format': destination['format'], 'address': destination['address']}
                                 existing_dests.append(dest)
-                                print('$$$$$$$$$ new destinations ' + str(new_dests))
-                                print('$$$$$$$$$ existing destinations ' + str(existing_dests))
                             for dest in new_dests:
                                 if dest not in existing_dests:
                                     break
@@ -126,13 +113,11 @@ def send_schedules(source_sdk, target_sdk, folders=None):
                     if is_duplicate:
                         continue
                     else:
-                        print("made it to line 66")
                         try:
                             target_sdk.create_scheduled_plan(new_schedule)
                         except Exception as e:
                             print(e)
                 else:
-                    print("made it to line 69")
                     try:
                         target_sdk.create_scheduled_plan(new_schedule)
                     except Exception as e:
@@ -144,7 +129,6 @@ def main(args):
     if args.debug:
         logger.setLevel(logging.DEBUG)
 
-    logger.info("LINE 9")
     source_sdk = get_client(args.ini, args.source)
 
     for t in args.target:
