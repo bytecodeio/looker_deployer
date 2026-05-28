@@ -129,7 +129,31 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
         win_exec = ["cmd.exe", "/c"]
         gzr_command = win_exec + gzr_command
 
-    subprocess.run(gzr_command)
+    result = subprocess.run(gzr_command, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        logger.error(
+            "Failed to deploy content",
+            extra={
+                "content_type": content_type,
+                "source_file": content_json,
+                "folder_id": space_id,
+                "return_code": result.returncode,
+                "stderr": result.stderr,
+                "stdout": result.stdout
+            }
+        )
+        raise RuntimeError(f"gzr {content_type} import failed with return code {result.returncode}: {result.stderr}")
+    else:
+        logger.debug(
+            "Content deployed successfully",
+            extra={
+                "content_type": content_type,
+                "source_file": content_json,
+                "folder_id": space_id,
+                "stdout": result.stdout
+            }
+        )
 
 
 def build_spaces(spaces, sdk):
@@ -165,6 +189,16 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
     space_children = [os.path.join(s, d) + os.sep for d in os.listdir(s) if os.path.isdir(os.path.join(s, d))]
     look_files = [os.path.join(s, i) for i in space_files if re.search("^Look", i)]
     dash_files = [os.path.join(s, i) for i in space_files if re.search("^Dashboard", i)]
+    
+    logger.info(
+        "Files found in folder",
+        extra={
+            "folder": s,
+            "all_files": space_files,
+            "looks": look_files,
+            "dashboards": dash_files
+        }
+    )
     logger.debug("files to process", extra={"looks": look_files, "dashboards": dash_files})
 
     # cut down directory to looker-specific paths
@@ -182,28 +216,38 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
 
     # deploy looks
     logger.debug("running looks", extra={"looks": look_files})
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pool.map(
-            import_content,
-            repeat("look"),
-            look_files,
-            repeat(space_id),
-            repeat(env),
-            repeat(ini),
-            repeat(debug)
-        )
+    if look_files:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = pool.map(
+                import_content,
+                repeat("look"),
+                look_files,
+                repeat(space_id),
+                repeat(env),
+                repeat(ini),
+                repeat(debug)
+            )
+            # Force evaluation of futures to catch exceptions
+            for _ in futures:
+                pass
     # deploy dashboards
-    logger.debug("running dashboards", extra={"dashboards": dash_files})
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pool.map(
-            import_content,
-            repeat("dashboard"),
-            dash_files,
-            repeat(space_id),
-            repeat(env),
-            repeat(ini),
-            repeat(debug)
-        )
+    logger.info("running dashboards", extra={"dashboards": dash_files})
+    if dash_files:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = pool.map(
+                import_content,
+                repeat("dashboard"),
+                dash_files,
+                repeat(space_id),
+                repeat(env),
+                repeat(ini),
+                repeat(debug)
+            )
+            # Force evaluation of futures to catch exceptions
+            for _ in futures:
+                pass
+    else:
+        logger.warning("No dashboard files found to deploy", extra={"folder": s})
 
     # go for recursion
     if recursive and space_children:
