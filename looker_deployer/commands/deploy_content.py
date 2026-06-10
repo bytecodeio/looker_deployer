@@ -84,7 +84,7 @@ def get_gzr_creds(ini, env):
     return (host, port, client_id, client_secret, verify_ssl)
 
 
-def import_content(content_type, content_json, space_id, env, ini, debug=False):
+def import_content(content_type, content_json, space_id, env, ini, debug=False, error_tracker=None):
     assert content_type in ["dashboard", "look"], "Unsupported Content Type"
     host, port, client_id, client_secret, verify_ssl = get_gzr_creds(ini, env)
 
@@ -132,6 +132,7 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
     result = subprocess.run(gzr_command, capture_output=True, text=True)
     
     if result.returncode != 0:
+        error_msg = f"gzr {content_type} import failed with return code {result.returncode}: {result.stderr}"
         logger.error(
             "Failed to deploy content",
             extra={
@@ -143,7 +144,14 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False):
                 "stdout": result.stdout
             }
         )
-        raise RuntimeError(f"gzr {content_type} import failed with return code {result.returncode}: {result.stderr}")
+        # Track error instead of raising
+        if error_tracker is not None:
+            error_tracker.append({
+                "content_type": content_type,
+                "source_file": content_json,
+                "folder_id": space_id,
+                "error": error_msg
+            })
     else:
         logger.debug(
             "Content deployed successfully",
@@ -180,7 +188,7 @@ def build_spaces(spaces, sdk):
     return id_tracker[0]
 
 
-def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
+def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False, error_tracker=None):
 
     logger.debug("working folder", extra={"working_folder": s})
 
@@ -225,7 +233,8 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
                 repeat(space_id),
                 repeat(env),
                 repeat(ini),
-                repeat(debug)
+                repeat(debug),
+                repeat(error_tracker)
             )
             # Force evaluation of futures to catch exceptions
             for _ in futures:
@@ -241,7 +250,8 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
                 repeat(space_id),
                 repeat(env),
                 repeat(ini),
-                repeat(debug)
+                repeat(debug),
+                repeat(error_tracker)
             )
             # Force evaluation of futures to catch exceptions
             for _ in futures:
@@ -253,12 +263,12 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False):
     if recursive and space_children:
         logger.info("Attemting Recursion of children folders", extra={"children_folders": space_children})
         for child in space_children:
-            deploy_space(child, sdk, env, ini, recursive, target_base, debug)
+            deploy_space(child, sdk, env, ini, recursive, target_base, debug, error_tracker)
     else:
         logger.info("No Recursion specified or empty child list", extra={"children_folders": space_children})
 
 
-def deploy_content(content_type, content, sdk, env, ini, target_base, debug=False):
+def deploy_content(content_type, content, sdk, env, ini, target_base, debug=False, error_tracker=None):
     # extract directory path
     dirs = content.rpartition(os.sep)[0] + os.sep
 
@@ -272,12 +282,14 @@ def deploy_content(content_type, content, sdk, env, ini, target_base, debug=Fals
     # The final value of id_tracker in build_spaces must be the targeted space id
     space_id = build_spaces(spaces_to_process, sdk)
 
-    import_content(content_type, content, space_id, env, ini, debug)
+    import_content(content_type, content, space_id, env, ini, debug, error_tracker)
 
 
 def send_content(
     sdk, env, ini, target_folder=None, spaces=None, dashboards=None, looks=None, recursive=False, debug=False, target_base=None
 ):
+    # Initialize error tracker to collect deployment errors
+    error_tracker = []
 
     if spaces:
         logger.debug("Deploying folders", extra={"folders": spaces})
@@ -294,10 +306,10 @@ def send_content(
                     # copy the source space directory tree to target space override
                     shutil.copytree(s, updated_space)
                     # kick off the job from the new space
-                    deploy_space(updated_space, sdk, env, ini, recursive, target_base, debug)
+                    deploy_space(updated_space, sdk, env, ini, recursive, target_base, debug, error_tracker)
             # If no target space override, kick off job normally
             else:
-                deploy_space(s, sdk, env, ini, recursive, target_base, debug)
+                deploy_space(s, sdk, env, ini, recursive, target_base, debug, error_tracker)
     if dashboards:
         logger.debug("Deploying dashboards", extra={"dashboards": dashboards})
         for dash in dashboards:
@@ -314,9 +326,9 @@ def send_content(
                     shutil.copy(dash, target_dir)
                     new_dash_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
                     # kick off the job from the new space
-                    deploy_content("dashboard", new_dash_path, sdk, env, ini, target_base, debug)
+                    deploy_content("dashboard", new_dash_path, sdk, env, ini, target_base, debug, error_tracker)
             else:
-                deploy_content("dashboard", dash, sdk, env, ini, target_base, debug)
+                deploy_content("dashboard", dash, sdk, env, ini, target_base, debug, error_tracker)
     if looks:
         logger.debug("Deploying looks", extra={"looks": looks})
         for look in looks:
@@ -333,9 +345,28 @@ def send_content(
                     shutil.copy(look, target_dir)
                     new_look_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
                     # kick off the job from the new space
-                    deploy_content("look", new_look_path, sdk, env, ini, target_base, debug)
+                    deploy_content("look", new_look_path, sdk, env, ini, target_base, debug, error_tracker)
             else:
-                deploy_content("look", look, sdk, env, ini, target_base, debug)
+                deploy_content("look", look, sdk, env, ini, target_base, debug, error_tracker)
+
+    # Display all errors at the end of deployment
+    if error_tracker:
+        logger.warning(
+            "Content deployment completed with errors",
+            extra={"error_count": len(error_tracker)}
+        )
+        logger.warning("=" * 80)
+        logger.warning("DEPLOYMENT ERRORS - The following content failed to import:")
+        logger.warning("=" * 80)
+        for idx, error in enumerate(error_tracker, 1):
+            logger.warning(
+                f"{idx}. {error['content_type'].upper()} - {error['source_file']}",
+                extra={
+                    "folder_id": error['folder_id'],
+                    "error_details": error['error']
+                }
+            )
+        logger.warning("=" * 80)
 
 
 def main(args):
