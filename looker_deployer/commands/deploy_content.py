@@ -236,9 +236,15 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False, error_tr
                 repeat(debug),
                 repeat(error_tracker)
             )
-            # Force evaluation of futures to catch exceptions
-            for _ in futures:
-                pass
+            # Force evaluation of futures, continue on error
+            try:
+                for _ in futures:
+                    pass
+            except Exception as e:
+                logger.error(
+                    "Error during look deployment",
+                    extra={"error": str(e)}
+                )
     # deploy dashboards
     logger.info("running dashboards", extra={"dashboards": dash_files})
     if dash_files:
@@ -253,9 +259,15 @@ def deploy_space(s, sdk, env, ini, recursive, target_base, debug=False, error_tr
                 repeat(debug),
                 repeat(error_tracker)
             )
-            # Force evaluation of futures to catch exceptions
-            for _ in futures:
-                pass
+            # Force evaluation of futures, continue on error
+            try:
+                for _ in futures:
+                    pass
+            except Exception as e:
+                logger.error(
+                    "Error during dashboard deployment",
+                    extra={"error": str(e)}
+                )
     else:
         logger.warning("No dashboard files found to deploy", extra={"folder": s})
 
@@ -295,59 +307,77 @@ def send_content(
         logger.debug("Deploying folders", extra={"folders": spaces})
         # Loop through spaces
         for s in spaces:
-            logger.debug("working folder", extra={"working_folder": s})
-            # Check for a target space override
-            if target_folder:
-                logger.info("target folder override found", extra={"target_folder": target_folder})
-                # In order for recursion to continue to work properly, the actual directory needs to be updated
-                # Create a temporary directory to contain updated space. Context block will auto-clean when done
-                with tempfile.TemporaryDirectory() as d:
-                    updated_space = os.path.join(d, target_folder)
-                    # copy the source space directory tree to target space override
-                    shutil.copytree(s, updated_space)
-                    # kick off the job from the new space
-                    deploy_space(updated_space, sdk, env, ini, recursive, target_base, debug, error_tracker)
-            # If no target space override, kick off job normally
-            else:
-                deploy_space(s, sdk, env, ini, recursive, target_base, debug, error_tracker)
+            try:
+                logger.debug("working folder", extra={"working_folder": s})
+                # Check for a target space override
+                if target_folder:
+                    logger.info("target folder override found", extra={"target_folder": target_folder})
+                    # In order for recursion to continue to work properly, the actual directory needs to be updated
+                    # Create a temporary directory to contain updated space. Context block will auto-clean when done
+                    with tempfile.TemporaryDirectory() as d:
+                        updated_space = os.path.join(d, target_folder)
+                        # copy the source space directory tree to target space override
+                        shutil.copytree(s, updated_space)
+                        # kick off the job from the new space
+                        deploy_space(updated_space, sdk, env, ini, recursive, target_base, debug, error_tracker)
+                # If no target space override, kick off job normally
+                else:
+                    deploy_space(s, sdk, env, ini, recursive, target_base, debug, error_tracker)
+            except Exception as e:
+                logger.error(
+                    "Error deploying folder",
+                    extra={"folder": s, "error": str(e)}
+                )
     if dashboards:
         logger.debug("Deploying dashboards", extra={"dashboards": dashboards})
         for dash in dashboards:
-            logger.debug("working dashboard", extra={"dashboard": dash})
-            # Check for target space override
-            if target_folder:
-                logger.info("target folder override found", extra={"target_folder": target_folder})
-                # In order for recursion to continue to work properly, the actual directory needs to be updated
-                # Create a temporary directory to contain updated space. Context block will auto-clean when done
-                with tempfile.TemporaryDirectory() as d:
-                    # copy the dashboard file to target space override
-                    target_dir = os.path.join(d, target_folder)
-                    os.makedirs(target_dir)
-                    shutil.copy(dash, target_dir)
-                    new_dash_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
-                    # kick off the job from the new space
-                    deploy_content("dashboard", new_dash_path, sdk, env, ini, target_base, debug, error_tracker)
-            else:
-                deploy_content("dashboard", dash, sdk, env, ini, target_base, debug, error_tracker)
+            try:
+                logger.debug("working dashboard", extra={"dashboard": dash})
+                # Check for target space override
+                if target_folder:
+                    logger.info("target folder override found", extra={"target_folder": target_folder})
+                    # In order for recursion to continue to work properly, the actual directory needs to be updated
+                    # Create a temporary directory to contain updated space. Context block will auto-clean when done
+                    with tempfile.TemporaryDirectory() as d:
+                        # copy the dashboard file to target space override
+                        target_dir = os.path.join(d, target_folder)
+                        os.makedirs(target_dir)
+                        shutil.copy(dash, target_dir)
+                        new_dash_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
+                        # kick off the job from the new space
+                        deploy_content("dashboard", new_dash_path, sdk, env, ini, target_base, debug, error_tracker)
+                else:
+                    deploy_content("dashboard", dash, sdk, env, ini, target_base, debug, error_tracker)
+            except Exception as e:
+                logger.error(
+                    "Error deploying dashboard",
+                    extra={"dashboard": dash, "error": str(e)}
+                )
     if looks:
         logger.debug("Deploying looks", extra={"looks": looks})
         for look in looks:
-            logger.debug("working look", extra={"look": look})
-            # Check for target space override
-            if target_folder:
-                logger.info("target folder override found", extra={"target_folder": target_folder})
-                # In order for recursion to continue to work properly, the actual directory needs to be updated
-                # Create a temporary directory to contain updated space. Context block will auto-clean when done
-                with tempfile.TemporaryDirectory() as d:
-                    # copy the look file to target space override
-                    target_dir = os.path.join(d, target_folder)
-                    os.makedirs(target_dir)
-                    shutil.copy(look, target_dir)
-                    new_look_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
-                    # kick off the job from the new space
-                    deploy_content("look", new_look_path, sdk, env, ini, target_base, debug, error_tracker)
-            else:
-                deploy_content("look", look, sdk, env, ini, target_base, debug, error_tracker)
+            try:
+                logger.debug("working look", extra={"look": look})
+                # Check for target space override
+                if target_folder:
+                    logger.info("target folder override found", extra={"target_folder": target_folder})
+                    # In order for recursion to continue to work properly, the actual directory needs to be updated
+                    # Create a temporary directory to contain updated space. Context block will auto-clean when done
+                    with tempfile.TemporaryDirectory() as d:
+                        # copy the look file to target space override
+                        target_dir = os.path.join(d, target_folder)
+                        os.makedirs(target_dir)
+                        shutil.copy(look, target_dir)
+                        new_look_path = [os.path.join(target_dir, f) for f in os.listdir(target_dir)][0]
+                        # kick off the job from the new space
+                        deploy_content("look", new_look_path, sdk, env, ini, target_base, debug, error_tracker)
+                else:
+                    deploy_content("look", look, sdk, env, ini, target_base, debug, error_tracker)
+            except Exception as e:
+                logger.error(
+                    "Error deploying look",
+                    extra={"look": look, "error": str(e)}
+                )
 
     # Display all errors at the end of deployment
     if error_tracker:
