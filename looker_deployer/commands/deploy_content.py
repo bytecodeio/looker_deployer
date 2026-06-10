@@ -105,7 +105,6 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False, 
         "gzr",
         content_type,
         "import",
-        "--skip_alerts",
         content_json,
         space_id,
         "--host",
@@ -118,6 +117,10 @@ def import_content(content_type, content_json, space_id, env, ini, debug=False, 
         client_secret,
         "--force"
     ]
+
+    
+    if content_type == "dashboard":
+        gzr_command.insert(4, "--skip_alerts")
 
     # config parser returns a string - easier to parse that than convert to a bool
     if verify_ssl == "False":
